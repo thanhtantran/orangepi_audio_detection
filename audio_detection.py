@@ -1,68 +1,69 @@
+# -*- coding: utf-8 -*-
 import sounddevice as sd
 import numpy as np
-import argparse
+
+def list_input_devices():
+    devices = sd.query_devices()
+    input_devices = []
+
+    print("Các thiết bị đầu vào khả dụng:\n")
+    for idx, dev in enumerate(devices):
+        if dev['max_input_channels'] > 0:
+            print(f"[{idx}] {dev['name']} | Kênh: {dev['max_input_channels']} | Sample rate mặc định: {int(dev['default_samplerate'])} Hz")
+            input_devices.append((idx, dev))
+    return input_devices
 
 def main():
-    # Tạo parser để xử lý tham số dòng lệnh
-    parser = argparse.ArgumentParser(description='Audio detection with multiple device options')
-    parser.add_argument('--device', type=int, choices=[1, 2], default=2,
-                        help='1: Mic built-in (hw:2,0), 2: USB Sound (hw:3,0)')
-    args = parser.parse_args()
-    
-    # Cấu hình thiết bị dựa trên lựa chọn
-    if args.device == 1:
-        # Mic built-in
-        input_device = 'hw:2,0'
-        CHANNELS = 2
-        RATE = 8000
-        print("Sử dụng mic built-in (hw:2,0)")
-    else:
-        # USB Sound
-        input_device = 'hw:3,0'
-        CHANNELS = 1
-        RATE = 44100
-        print("Sử dụng USB sound (hw:3,0)")
-    
-    # Các tham số chung
-    FORMAT = 'int16'
-    CHUNK = 1024
-    THRESHOLD = 75
-    
-    # Biến theo dõi việc phát hiện âm thanh
-    audio_detected = 0
+    # Liệt kê thiết bị và yêu cầu người dùng chọn
+    input_devices = list_input_devices()
+    if not input_devices:
+        print("❌ Không tìm thấy thiết bị đầu vào nào.")
+        return
+
+    selected_id = int(input("\nNhập ID thiết bị bạn muốn sử dụng: "))
     
     try:
-        # Cấu hình luồng âm thanh
+        selected_dev = sd.query_devices(selected_id)
+        print(f"\n✅ Đang sử dụng thiết bị: {selected_dev['name']}")
+    except Exception as e:
+        print(f"Lỗi: {e}")
+        return
+
+    # Lấy thông tin cấu hình từ thiết bị
+    channels = selected_dev['max_input_channels']
+    samplerate = int(selected_dev['default_samplerate'])
+
+    # Các tham số cấu hình
+    CHUNK = 1024
+    FORMAT = 'int16'  # tương thích tốt
+    THRESHOLD = 75
+
+    audio_detected = 0
+
+    try:
         stream = sd.InputStream(
-            device=input_device,
-            channels=CHANNELS,
-            samplerate=RATE,
+            device=selected_id,
+            channels=channels,
+            samplerate=samplerate,
             dtype=FORMAT
         )
-        
+
         with stream:
-            print(f"Đang lắng nghe âm thanh từ {input_device}... Nhấn Ctrl+C để thoát.")
+            print(f"\n🎧 Đang lắng nghe âm thanh từ '{selected_dev['name']}'... Nhấn Ctrl+C để thoát.\n")
             while True:
-                # Đọc dữ liệu âm thanh
-                indata_raw, overflowed = stream.read(CHUNK)
-                
-                # Xử lý dữ liệu (tính giá trị trung bình)
+                indata_raw, _ = stream.read(CHUNK)
                 indata = np.abs(indata_raw).mean()
-                
-                # Kiểm tra phát hiện âm thanh
+
                 if indata > THRESHOLD:
                     audio_detected = 1
                 else:
                     audio_detected = 0
-                
-                # Hiển thị trạng thái
-                print(f"Âm thanh được phát hiện: {audio_detected}, Mức độ: {indata}")
-    
-    except KeyboardInterrupt:
-        print("Dừng phát hiện âm thanh.")
-    except Exception as e:
-        print(f"Lỗi: {e}")
-        print("Kiểm tra xem thiết bị âm thanh có được kết nối và cấu hình đúng không")
 
-if __name__ == "__main__":
+                print(f"Phát hiện âm thanh: {audio_detected} | Mức độ: {indata:.2f}")
+    except KeyboardInterrupt:
+        print("🛑 Dừng phát hiện âm thanh.")
+    except Exception as e:
+        print(f"❌ Lỗi: {e}")
+
+if __name__ == '__main__':
     main()
